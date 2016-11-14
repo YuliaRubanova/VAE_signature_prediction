@@ -8,13 +8,14 @@ import autograd.scipy.stats.norm as norm
 
 from autograd import grad
 from autograd.optimizers import adam
-from data import load_mnist, save_images, load_signature_data, get_trinucleotide_names
+from data import *
+from plotting_signatures import *
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import sys, os
-import json
+import pickle
 
-model = "VAE_one"
+model = "VAE_one_for_transition"
 
 def diag_gaussian_log_density(x, mu, log_std):
 	return np.sum(norm.logpdf(x, mu, np.exp(log_std)), axis=-1)
@@ -71,17 +72,29 @@ def p_data_given_latents(gen_params, labels, latents):
 	pred_means, pred_log_stds = nn_predict_gaussian(gen_params, latents)
 	return diag_gaussian_log_density(labels, pred_means, pred_log_stds)
 
-def vae_lower_bound(gen_params, rec_params, data, rs, kl_weight):
+def vae_lower_bound(gen_params, rec_params, inputs, labels, rs, kl_weight):
 	# We use a simple Monte Carlo estimate of the KL
 	# divergence from the prior.
-	q_means, q_log_stds = nn_predict_gaussian(rec_params, data)
+	q_means, q_log_stds = nn_predict_gaussian(rec_params, inputs)
 	latents = sample_diag_gaussian(q_means, q_log_stds, rs)
 	q_latents = diag_gaussian_log_density(latents, q_means, q_log_stds)
 	p_latents = diag_gaussian_log_density(latents, 0, 1)
-	likelihood = p_data_given_latents(gen_params, data, latents)
+	likelihood = p_data_given_latents(gen_params, labels, latents)
 	kl_divergence = - np.mean(p_latents - q_latents)
 	return np.mean(likelihood + (p_latents - q_latents) * kl_weight), np.mean(likelihood), kl_divergence, q_means, q_log_stds
 
+def vae_predict(optimized_params, inputs):
+	gen_params, rec_params = optimized_params
+
+	z_means, z_stds = nn_predict_gaussian(rec_params, inputs)
+
+	print(z_means)
+	second_tp_means, second_tp_stds = nn_predict_gaussian(gen_params, z_means)
+	sample_second_tp = second_tp_means
+
+	print(sample_second_tp)
+
+	return(sample_second_tp, z_means)
 
 if __name__ == '__main__':
 	# Model hyper-parameters
@@ -90,37 +103,54 @@ if __name__ == '__main__':
 	if len(sys.argv) > 1:
 		latent_dim = int(sys.argv[1])
 
-	data_dim = 126  # How many pixels in each image (28x28).
-	gen_layer_sizes = [latent_dim, 300, 200, data_dim * 2]
-	rec_layer_sizes = [data_dim, 200, 300, latent_dim * 2]
+	data_dim = 126
+	tp_dim = 126
+	exposures_included = True
 
 	# Training parameters
 	param_scale = 0.01
 	batch_size = 200
-	num_epochs = 100
+	num_epochs = 1000
 	step_size = 0.0005
 	kl_weight_decay_time = 1
 	if len(sys.argv) > 2:
 		kl_weight_decay_time = int(sys.argv[2])
 
+	data_set = 'vae/training_transition_data.only_mut_types.csv'
+	annot = 'vae/training_annotation.csv'
+	
+	if len(sys.argv) > 3: 
+		data_set = sys.argv[3]
+
+	if data_set == 'vae/training_transition_data.only_mut_types.csv':
+		model += "_only_mut_types"
+		tp_dim = 96
+		data_dim = 96
+		exposures_included = False
+
+	gen_layer_sizes = [latent_dim, 300, 200, data_dim * 2]
+	rec_layer_sizes = [data_dim, 200, 300, latent_dim * 2]
+
+
 	if not os.path.exists("vae/" + model + "/"):
 		os.makedirs("vae/" + model + "/")
 
-	model_prefix = "vae/" + model + "/" + model + "_tp."
+	if not os.path.exists("vae/" + model + "/" + data_set[4:-4] + "/"):
+		os.makedirs("vae/" + model + "/" + data_set[4:-4] + "/")
+
+	model_prefix = "vae/" + model + "/" + data_set[4:-4] + "/" + model + "_tp."
 	param_postfix = "latent_dim_" + str(latent_dim) + ".kl_weight_decay_time_" + str(kl_weight_decay_time) + ".pdf"
 
 	log_file = model_prefix + param_postfix[:-4] + ".log.txt"
 
-	if os.path.exists(log_file):
+	if os.path.exists(log_file): 
 		os.remove(log_file)
 
 	print("Loading training data...")
-	# N, train_samples, _, test_images, _ = load_mnist()
-	# on = train_samples > 0.5
-	# train_samples = train_samples * 0 - 1
-	# train_samples[on] = 1.0
+	N, train_samples, test_images, training_annot, test_annot = load_signature_data(data_set, annot)
 
-	N, train_samples, test_images = load_signature_data('vae/training_data.csv')
+	train_first_tp = train_samples[:,:tp_dim]
+	train_second_tp = train_samples[:,tp_dim:(tp_dim*2)]
 
 	init_gen_params = init_net_params(param_scale, gen_layer_sizes)
 	init_rec_params = init_net_params(param_scale, rec_layer_sizes)
@@ -138,7 +168,8 @@ if __name__ == '__main__':
 		gen_params, rec_params = combined_params
 		kl_weight = min(1, iter / kl_weight_decay_time)
 
-		lower_bound, likelihood, kl_divergence, q_means, q_log_stds = vae_lower_bound(gen_params, rec_params, train_samples[data_idx], seed, kl_weight)
+		lower_bound, likelihood, kl_divergence, q_means, q_log_stds = vae_lower_bound(gen_params, rec_params, \
+																			train_first_tp[data_idx], train_second_tp[data_idx], seed, kl_weight)
 		return lower_bound / data_dim, likelihood/data_dim, kl_divergence/data_dim, q_means, q_log_stds
 
 	def objective(combined_params, iter):
@@ -148,6 +179,7 @@ if __name__ == '__main__':
 	# Get gradients of objective using autograd.
 	objective_grad = grad(objective)
 
+	# Train VAE
 	elbo_list = []
 	likelihood_list = []
 	kl_divergence_list = []
@@ -183,7 +215,22 @@ if __name__ == '__main__':
 	optimized_params = adam(objective_grad, combined_init_params, step_size=step_size,
 							num_iters=num_epochs * num_batches, callback=print_perf)
 
+	with open(model_prefix + "optimized_params" + param_postfix + '.pickle', 'wb') as handle:
+		pickle.dump(optimized_params, handle)
+
+	sample_second_tp, z_first_tp_means = vae_predict(optimized_params, train_first_tp)
+
 	plot_elbo(elbo_list, likelihood_list, kl_divergence_list, model_prefix + param_postfix)
 
-	plot_mut_types(sample_from_prior[-1][0][:96], model_prefix + ".mutation_types." + param_postfix)
-	plot_exposures(sample_from_prior[-1][0][96:126], model_prefix + "exposures." + param_postfix)
+	plot_mut_types(sample_second_tp[0,:96], model_prefix + ".mutation_types.predicted_tp_2." + param_postfix)
+	if (exposures_included):
+		plot_exposures(sample_second_tp[0,96:126], model_prefix + "exposures.predicted_tp_2." + param_postfix)
+
+	plot_mut_types(sample_from_prior[-1][0,:96], model_prefix + ".mutation_types.sample_from_prior." + param_postfix)
+	if (exposures_included):
+		plot_exposures(sample_from_prior[-1][0,96:126], model_prefix + "exposures.sample_from_prior." + param_postfix)
+
+	plot_mut_types(train_samples[0,:96], model_prefix + "reproduced_samples.mut_types.pdf")
+	if (exposures_included):
+		plot_exposures(train_samples[0,96:126], model_prefix + "reproduced_samples.exposures.pdf")
+

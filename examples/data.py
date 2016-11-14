@@ -5,6 +5,7 @@ import matplotlib.image
 import autograd.numpy as np
 import autograd.numpy.random as npr
 import data_mnist
+from numpy import genfromtxt
 
 def load_mnist():
     partial_flatten = lambda x : np.reshape(x, (x.shape[0], np.prod(x.shape[1:])))
@@ -65,3 +66,42 @@ def make_pinwheel(radial_std, tangential_std, num_classes, num_per_class, rate,
     rotations = np.reshape(rotations.T, (-1, 2, 2))
 
     return np.einsum('ti,tij->tj', features, rotations)
+
+def load_signature_data(path, annot_path = "vae/training_annotation.csv"):
+
+    data = genfromtxt(path, delimiter=',')
+    annotation = genfromtxt(annot_path, delimiter=',')
+
+    assert(data.shape[0] == annotation.shape[0])
+
+    N_samples = data.shape[0]
+    dim = data.shape[1]
+
+    training_data = data[: int(np.ceil(N_samples*0.8)),]
+    test_data = data[int(np.ceil(N_samples*0.8)):,]
+
+    training_annot = annotation[: int(np.ceil(N_samples*0.8)),]
+    test_annot  = annotation[int(np.ceil(N_samples*0.8)):,]
+
+    return dim, training_data, test_data, training_annot, test_annot
+            
+def get_trinucleotide_names():
+    trinucleotides = []
+
+    with open("vae/trinucleotide.txt", "r") as f:
+        for l in f:
+            ref, alt, context = l.split()
+            trinucleotides.append(ref + ">" + alt + "," + context)
+
+    return(trinucleotides)
+
+def get_cancer_types():
+    cancer_types = []
+
+    with open("vae/cancer_types.txt", "r") as f:
+        for l in f:
+            cancer_types = l.split()
+
+    return(cancer_types)
+
+
