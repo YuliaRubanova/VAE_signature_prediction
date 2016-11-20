@@ -88,11 +88,8 @@ def vae_predict(optimized_params, inputs):
 
 	z_means, z_stds = nn_predict_gaussian(rec_params, inputs)
 
-	print(z_means)
 	second_tp_means, second_tp_stds = nn_predict_gaussian(gen_params, z_means)
 	sample_second_tp = second_tp_means
-
-	print(sample_second_tp)
 
 	return(sample_second_tp, z_means)
 

@@ -81,7 +81,7 @@ def p_first_tp_given_latents(gen_params, labels, latents):
 	pred_log_stds_first_tp = pred_log_stds[:,:tp_dim]
 	return diag_gaussian_log_density(labels, pred_means_first_tp, pred_log_stds_first_tp)
 
-def p_second_tp_given_latents(gen_params, labels, latents):
+def p_second_tp_given_latents(gen_params, labels, latents, tp_dim):
 	pred_means, pred_log_stds = nn_predict_gaussian(gen_params, latents)
 	pred_means_second_tp = pred_means[:,tp_dim:]
 	pred_log_stds_second_tp = pred_log_stds[:,tp_dim:]
@@ -101,7 +101,7 @@ def vae_lower_bound(gen_params, rec_params, data, rs, kl_weight, likelihood_give
 def vae_lower_bound_first_tp(gen_params, rec_params, data, rs, kl_weight):
 	return vae_lower_bound(gen_params, rec_params, data, rs, kl_weight, p_first_tp_given_latents)
 
-def two_step_vae_plus_nn_predict(rec_params, gen_params, data, latent_dim):
+def two_step_vae_plus_nn_predict(rec_params, gen_params, data, latent_dim, tp_dim):
 	# prediction
 	z_latents = neural_net_predict(rec_params, data)
 
@@ -115,7 +115,6 @@ def two_step_vae_plus_nn_predict(rec_params, gen_params, data, latent_dim):
 	# latents_first_tp = np.mean(np.array(latents_first_tp), axis=0)
 	
 	latents_first_tp = z_first_tp_means
-	#p_second_tp_given_latents(gen_layer_optimized, train_second_tp, latents_first_tp)
 	second_tp_means, second_tp_stds = nn_predict_gaussian(gen_params, latents_first_tp)
 	#sample_second_tp = sample_diag_gaussian(second_tp_means, second_tp_stds, seed)
 	sample_second_tp = second_tp_means[:,tp_dim:(tp_dim*2)]
@@ -300,7 +299,7 @@ if __name__ == '__main__':
 	with open(model_prefix + "optimized_params_first_tp" + param_postfix + '.pickle', 'wb') as handle:
 		pickle.dump(optimized_params_first_tp, handle)
 
-	sample_second_tp, z_first_tp_means = two_step_vae_plus_nn_predict(optimized_params_first_tp, gen_layer_optimized, train_first_tp, latent_dim)
+	sample_second_tp, z_first_tp_means = two_step_vae_plus_nn_predict(optimized_params_first_tp, gen_layer_optimized, train_first_tp, latent_dim, tp_dim)
 
 	plot_loss(loss_list, model_prefix + "_vae_first_tp." + param_postfix)
 

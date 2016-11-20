@@ -1,5 +1,9 @@
 import autograd.numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot
 import matplotlib.pyplot as plt
+
 import matplotlib.cm as cm
 import matplotlib.patches as mpatches
 from sklearn.decomposition import PCA
@@ -24,17 +28,34 @@ def plot_elbo(elbo_list, likelihood_list, kl_divergence_list, plot_name):
 	#plt.title("%d dimensional posterior"%D)
 	plt.savefig(plot_name)
 
-def plot_loss(loss_list, plot_name):
+def plot_loss(loss_list, plot_name, label):
 	# visually compare the ELBO
 	plt.figure(figsize=(12,8))
 
 	plt.plot(np.arange(len(loss_list)), loss_list,
-			 '-', label="MSE Loss", alpha=.5, c="r")
+			 '-', label=label, alpha=.5, c="r")
 
 	plt.ylim((0, max(loss_list)))
 	plt.xlim((0, len(loss_list)-0.5))
 	plt.xlabel("Iteration")
-	plt.ylabel("Loss")
+	plt.ylabel(label)
+	#plt.title("%d dimensional posterior"%D)
+	plt.savefig(plot_name)
+
+def plot_likelihood(train_likelihood, test_likelihood, plot_name):
+	# visually compare the ELBO
+	plt.figure(figsize=(12,8))
+
+	plt.plot(np.arange(len(train_likelihood)), train_likelihood,
+			 '-', label="Train likelihood", alpha=.5, c="r")
+	plt.plot(np.arange(len(test_likelihood)), test_likelihood, '-',
+			 label="Test likelihood", c="b")
+
+	plt.ylim((0, max(max(train_likelihood), max(test_likelihood))))
+	plt.xlim((0, len(test_likelihood)-0.5))
+	plt.xlabel("Iteration")
+	plt.ylabel("Likelihood")
+	plt.legend(loc='lower right')
 	#plt.title("%d dimensional posterior"%D)
 	plt.savefig(plot_name)
 
