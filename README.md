@@ -1,4 +1,4 @@
-# Variational Autoencoder for predicting mutational signatures
+# Variational Autoencoder for predicting cancer mutations
 This work is a course project for CSC2541.
 
 ### Background
